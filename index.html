@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Dimentech 報價單產生器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#1F4E78;
+    --line:#999;
+    --bg:#f4f6f8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:"Microsoft JhengHei","PingFang TC",Arial,sans-serif;
+    background:var(--bg);
+    margin:0;
+    padding:20px;
+    color:#222;
+  }
+  h1{font-size:20px;margin:0 0 16px;color:var(--navy);}
+  .layout{
+    display:grid;
+    grid-template-columns:360px 1fr;
+    gap:20px;
+    align-items:start;
+  }
+  .panel{
+    background:#fff;
+    border-radius:8px;
+    padding:16px 18px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);
+    margin-bottom:16px;
+  }
+  .panel h2{
+    font-size:15px;
+    margin:0 0 10px;
+    color:var(--navy);
+    border-bottom:1px solid #eee;
+    padding-bottom:6px;
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:#555;
+    margin:8px 0 3px;
+  }
+  input[type=text],input[type=date],input[type=number],input[type=password],select,textarea{
+    width:100%;
+    padding:6px 8px;
+    border:1px solid #ccc;
+    border-radius:4px;
+    font-size:13px;
+    font-family:inherit;
+  }
+  textarea{resize:vertical;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .file-drop{
+    border:2px dashed #bbb;
+    border-radius:6px;
+    padding:14px;
+    text-align:center;
+    font-size:12px;
+    color:#777;
+    cursor:pointer;
+    background:#fafbfc;
+  }
+  .file-drop:hover{border-color:var(--navy);color:var(--navy);}
+  .status{font-size:12px;margin-top:6px;color:#2a7a2a;}
+  .status.err{color:#c0392b;}
+  button{
+    cursor:pointer;
+    border:none;
+    border-radius:5px;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:600;
+  }
+  .btn-primary{background:var(--navy);color:#fff;}
+  .btn-primary:hover{background:#163a58;}
+  .btn-add{background:#2a7a2a;color:#fff;width:100%;margin-top:10px;}
+  .btn-add:hover{background:#1e5c1e;}
+  .btn-remove{background:#e74c3c;color:#fff;padding:3px 8px;font-size:11px;}
+  .btn-remove:hover{background:#c0392b;}
+  .toolbar{display:flex;gap:10px;margin-bottom:16px;}
+
+  /* ---- Quotation preview (mimics company template) ---- */
+  #sheet{
+    background:#fff;
+    padding:36px 40px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);
+    border-radius:8px;
+    width:794px;
+    max-width:100%;
+    margin:0 auto;
+  }
+  .doc-header{display:flex;justify-content:space-between;align-items:flex-start;}
+  .doc-header .co-name{font-size:20px;font-weight:bold;color:var(--navy);}
+  .doc-header .co-sub{font-size:13px;color:#333;margin-top:2px;}
+  .doc-header .co-info{font-size:11px;color:#555;margin-top:6px;line-height:1.5;}
+  .doc-title{text-align:center;font-size:18px;font-weight:bold;text-decoration:underline;margin:18px 0 10px;}
+  .doc-page{text-align:right;font-size:11px;color:#666;}
+  table.meta{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;}
+  table.meta td{padding:2px 4px;vertical-align:top;}
+  table.meta td.k{width:80px;color:#333;white-space:nowrap;}
+  table.meta td.v{border-bottom:1px solid #ccc;}
+  table.items{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}
+  table.items th{
+    border-top:1.5px solid #333;
+    border-bottom:1px solid #333;
+    padding:5px 4px;
+    text-align:left;
+    background:#f0f2f4;
+  }
+  table.items td{padding:5px 4px;vertical-align:top;border-bottom:1px solid #eee;}
+  table.items td.num,table.items th.num{text-align:right;}
+  table.items tr.total-row td{border-top:1.5px solid #333;border-bottom:none;font-weight:bold;}
+  .spec-line{color:#555;font-size:11px;white-space:pre-line;}
+  .remarks{font-size:11.5px;margin-top:16px;line-height:1.7;white-space:pre-line;}
+  .sign{margin-top:50px;text-align:right;font-size:12px;}
+  .sign .line{border-top:1px solid #333;width:220px;margin-left:auto;margin-top:36px;}
+
+  /* ---- Password lock overlay ---- */
+  #lockOverlay{
+    position:fixed;inset:0;background:#1F4E78;
+    display:flex;align-items:center;justify-content:center;z-index:999;
+  }
+  #lockBox{
+    background:#fff;border-radius:10px;padding:28px 30px;width:280px;
+    box-shadow:0 4px 20px rgba(0,0,0,.25);text-align:center;
+  }
+  #lockBox h2{font-size:16px;color:var(--navy);margin:0 0 14px;}
+  #lockBox input{margin-bottom:10px;}
+  #lockBox button{width:100%;}
+  #lockErr{color:#c0392b;font-size:12px;min-height:16px;margin-top:6px;}
+  body.locked .layout{display:none;}
+  body:not(.locked) #lockOverlay{display:none;}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .layout > div:first-child,.toolbar{display:none !important;}
+    .layout{display:block;}
+    #sheet{box-shadow:none;padding:0;width:100%;}
+    .no-print{display:none !important;}
+  }
+</style>
+</head>
+<body class="locked">
+
+<div id="lockOverlay">
+  <div id="lockBox">
+    <h2>Dimentech 報價單產生器</h2>
+    <input type="password" id="lockPwd" placeholder="請輸入密碼">
+    <button class="btn-primary" onclick="tryUnlock()">進入</button>
+    <div id="lockErr"></div>
+  </div>
+</div>
+
+<h1>Dimentech 報價單產生器</h1>
+
+<div class="layout">
+  <div>
+    <div class="panel">
+      <h2>① 產品清單來源</h2>
+      <div class="file-drop" onclick="document.getElementById('fileInput').click()">
+        點擊選擇「產品清單.xlsx」上傳<br>（未上傳時使用內建範例3項）
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+      <div id="fileStatus" class="status">目前使用：內建範例產品</div>
+    </div>
+
+    <div class="panel">
+      <h2>② 客戶資訊</h2>
+      <label>客戶名稱 Name</label>
+      <input type="text" id="custName" value="ALN Tronics Private Limited.">
+      <label>地址 Address</label>
+      <input type="text" id="custAddr" value="">
+      <div class="row2">
+        <div><label>聯絡人 Attn.</label><input type="text" id="custAttn" value=""></div>
+        <div><label>電話 Tel</label><input type="text" id="custTel" value=""></div>
+      </div>
+      <div class="row2">
+        <div><label>報價單號 Ref.</label><input type="text" id="refNo" value="KQ26070008"></div>
+        <div><label>日期 Date</label><input type="date" id="quoteDate"></div>
+      </div>
+      <div class="row2">
+        <div><label>有效期限 Validity</label><input type="date" id="validDate"></div>
+        <div><label>幣別 Currency</label>
+          <select id="currency"><option>USD</option><option>TWD</option><option>EUR</option><option>JPY</option></select>
+        </div>
+      </div>
+      <div class="row2">
+        <div><label>稅 Tax</label><input type="text" id="taxNote" value="Not Included"></div>
+        <div><label>業務 Staff</label><input type="text" id="staff" value="Blong Teng"></div>
+      </div>
+      <label>交貨方式 Delivery</label>
+      <input type="text" id="delivery" value="BY SEA">
+    </div>
+
+    <div class="panel">
+      <h2>③ 選擇品項</h2>
+      <label>產品</label>
+      <select id="productSelect"></select>
+      <div class="row2">
+        <div><label>數量 Quantity</label><input type="number" id="qtyInput" value="1" min="1"></div>
+        <div><label>單價（可調整）</label><input type="number" id="priceInput" step="0.01"></div>
+      </div>
+      <button class="btn-add" onclick="addItem()">加入報價單</button>
+    </div>
+
+    <div class="panel">
+      <h2>④ 備註 Remarks</h2>
+      <textarea id="remarks" rows="6">1) All hardware is made in Taiwan. The software is designed in the US.
+2) The price quoted does NOT include installation and overseas after-sales service.
+3) Freight Term : FOB Keelung, Taiwan.
+4) Lead Time: 8 weeks ARO.
+5) Payment Terms: 100% L/C at sight.</textarea>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-primary" onclick="window.print()">列印 / 另存 PDF</button>
+    </div>
+  </div>
+
+  <div id="sheet">
+    <div class="doc-header">
+      <div>
+        <div class="co-name">順 大 科 技 股 份 有 限 公 司</div>
+        <div class="co-sub">Dimentech Company Limited</div>
+        <div class="co-info">
+          114台北市內湖區內湖路一段512號7樓<br>
+          7F, No. 512, Sec. 1, Nei Hu Road, Taipei 114, Taiwan<br>
+          Tel : 886-2-8797-5899　統一編號：93591698
+        </div>
+      </div>
+      <div class="doc-page">PAGE: 1</div>
+    </div>
+
+    <div class="doc-title">Quotation List</div>
+
+    <table class="meta">
+      <tr>
+        <td class="k">Customer:</td><td class="v"></td>
+        <td class="k">Ref.&nbsp;&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pRef"></td>
+      </tr>
+      <tr>
+        <td class="k">Name&nbsp;&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pName"></td>
+        <td class="k">Date&nbsp;&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pDate"></td>
+      </tr>
+      <tr>
+        <td class="k">Address :</td><td class="v" id="pAddr"></td>
+        <td class="k">Validity:</td><td class="v" id="pValid"></td>
+      </tr>
+      <tr>
+        <td class="k"></td><td class="v"></td>
+        <td class="k">Currency :</td><td class="v" id="pCurrency"></td>
+      </tr>
+      <tr>
+        <td class="k">Attn.&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pAttn"></td>
+        <td class="k">Tax&nbsp;&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pTax"></td>
+      </tr>
+      <tr>
+        <td class="k">Tel&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pTel"></td>
+        <td class="k">Staff&nbsp;&nbsp;&nbsp;:</td><td class="v" id="pStaff"></td>
+      </tr>
+      <tr>
+        <td class="k">Delivery:</td><td class="v" id="pDelivery"></td>
+        <td class="k"></td><td class="v"></td>
+      </tr>
+    </table>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th style="width:6%">Seq.</th>
+          <th style="width:16%">Item No</th>
+          <th>Description</th>
+          <th class="num" style="width:12%">Quantity/Unit</th>
+          <th class="num" style="width:12%">Unit Price</th>
+          <th class="num" style="width:12%">Amount</th>
+          <th style="width:6%"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td colspan="5" style="text-align:right;">Total:</td>
+          <td class="num" id="totalAmount">0</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="remarks" id="remarksPreview"></div>
+
+    <div class="sign">
+      Dimentech Company Limited
+      <div class="line"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- 加密後的內建產品資料（PBKDF2-SHA256 + AES-GCM 256），需正確密碼才能解密 ----
+const ENC = {
+  salt: "rmIn8jPojA0Dv5UnJD5Olw==",
+  iv: "KHLclErh6KpLjQg8",
+  data: "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",
+  iterations: 250000
+};
+
+function b64ToBytes(b64){
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function tryUnlock(){
+  const pwd = document.getElementById("lockPwd").value;
+  const errEl = document.getElementById("lockErr");
+  errEl.textContent = "解密中...";
+  try{
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey("raw", enc.encode(pwd), {name:"PBKDF2"}, false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+      {name:"PBKDF2", salt:b64ToBytes(ENC.salt), iterations:ENC.iterations, hash:"SHA-256"},
+      baseKey,
+      {name:"AES-GCM", length:256},
+      false,
+      ["decrypt"]
+    );
+    const plainBuf = await crypto.subtle.decrypt(
+      {name:"AES-GCM", iv:b64ToBytes(ENC.iv)},
+      key,
+      b64ToBytes(ENC.data)
+    );
+    const json = new TextDecoder().decode(plainBuf);
+    products = JSON.parse(json);
+    document.body.classList.remove("locked");
+    errEl.textContent = "";
+    refreshProductSelect();
+    renderQuote();
+  }catch(e){
+    errEl.textContent = "密碼錯誤，請再試一次";
+  }
+}
+document.getElementById("lockPwd").addEventListener("keydown", function(e){
+  if(e.key === "Enter") tryUnlock();
+});
+
+let products = [];
+let quoteItems = [];
+
+function fmtMoney(n){
+  return Number(n).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});
+}
+function fmtDate(iso){
+  if(!iso) return "";
+  const d = new Date(iso+"T00:00:00");
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return months[d.getMonth()]+". "+d.getDate()+" "+d.getFullYear();
+}
+
+function refreshProductSelect(){
+  const sel = document.getElementById("productSelect");
+  sel.innerHTML = "";
+  products.forEach((p,i)=>{
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = p.itemNo + " - " + p.desc + " ($" + fmtMoney(p.price) + "/" + p.unit + ")";
+    sel.appendChild(opt);
+  });
+  onProductChange();
+}
+document.getElementById("productSelect").addEventListener("change", onProductChange);
+function onProductChange(){
+  const idx = document.getElementById("productSelect").value;
+  if(products[idx]) document.getElementById("priceInput").value = products[idx].price;
+}
+
+function addItem(){
+  const idx = document.getElementById("productSelect").value;
+  const p = products[idx];
+  if(!p) return;
+  const qty = parseFloat(document.getElementById("qtyInput").value) || 1;
+  const price = parseFloat(document.getElementById("priceInput").value) || 0;
+  quoteItems.push({
+    itemNo:p.itemNo, desc:p.desc, spec:p.spec, unit:p.unit, qty:qty, price:price
+  });
+  renderQuote();
+}
+
+function removeItem(i){
+  quoteItems.splice(i,1);
+  renderQuote();
+}
+
+function renderQuote(){
+  const body = document.getElementById("itemsBody");
+  body.innerHTML = "";
+  let total = 0;
+  quoteItems.forEach((it,i)=>{
+    const amount = it.qty * it.price;
+    total += amount;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${it.itemNo}</td>
+      <td>${it.desc}${it.spec ? '<div class="spec-line">'+it.spec.replace(/</g,"&lt;")+'</div>' : ''}</td>
+      <td class="num">${it.qty} ${it.unit}</td>
+      <td class="num">$${fmtMoney(it.price)}</td>
+      <td class="num">$${fmtMoney(amount)}</td>
+      <td class="no-print"><button class="btn-remove" onclick="removeItem(${i})">刪除</button></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById("totalAmount").textContent = "$" + fmtMoney(total);
+  renderMeta();
+}
+
+function renderMeta(){
+  document.getElementById("pName").textContent = document.getElementById("custName").value;
+  document.getElementById("pAddr").textContent = document.getElementById("custAddr").value;
+  document.getElementById("pAttn").textContent = document.getElementById("custAttn").value;
+  document.getElementById("pTel").textContent = document.getElementById("custTel").value;
+  document.getElementById("pDelivery").textContent = document.getElementById("delivery").value;
+  document.getElementById("pRef").textContent = document.getElementById("refNo").value;
+  document.getElementById("pDate").textContent = fmtDate(document.getElementById("quoteDate").value);
+  document.getElementById("pValid").textContent = fmtDate(document.getElementById("validDate").value);
+  document.getElementById("pCurrency").textContent = document.getElementById("currency").value;
+  document.getElementById("pTax").textContent = document.getElementById("taxNote").value;
+  document.getElementById("pStaff").textContent = document.getElementById("staff").value;
+  document.getElementById("remarksPreview").textContent = document.getElementById("remarks").value;
+}
+
+["custName","custAddr","custAttn","custTel","delivery","refNo","quoteDate","validDate","currency","taxNote","staff","remarks"]
+  .forEach(id=>document.getElementById(id).addEventListener("input", renderMeta));
+document.getElementById("currency").addEventListener("change", renderMeta);
+
+// default dates
+(function(){
+  const today = new Date();
+  const iso = today.toISOString().slice(0,10);
+  document.getElementById("quoteDate").value = iso;
+  const validity = new Date(today.getTime() + 30*24*3600*1000).toISOString().slice(0,10);
+  document.getElementById("validDate").value = validity;
+})();
+
+// Excel upload parsing
+document.getElementById("fileInput").addEventListener("change", function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:"array"});
+      const wsName = wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wsName], {header:1, defval:""});
+      // expect header row then data rows: 品號 | 品名 | 規格 | 單位 | 單價
+      const parsed = [];
+      for(let r=1; r<rows.length; r++){
+        const row = rows[r];
+        if(!row || !row[0]) continue;
+        parsed.push({
+          itemNo: String(row[0]).trim(),
+          desc: String(row[1]||"").trim(),
+          spec: String(row[2]||"").trim(),
+          unit: String(row[3]||"PC").trim(),
+          price: parseFloat(row[4]) || 0
+        });
+      }
+      if(parsed.length===0){
+        throw new Error("找不到有效的品項資料，請確認格式：品號/品名/規格/單位/單價");
+      }
+      products = parsed;
+      refreshProductSelect();
+      document.getElementById("fileStatus").className = "status";
+      document.getElementById("fileStatus").textContent = "已載入：" + file.name + "（共 " + products.length + " 項）";
+    }catch(err){
+      document.getElementById("fileStatus").className = "status err";
+      document.getElementById("fileStatus").textContent = "讀取失敗：" + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+renderQuote();
+</script>
+</body>
+</html>
